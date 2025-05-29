@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Inivatech Sistem - Sistema de Tienda</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: #f5f5f7;
+    margin: 0; padding: 20px;
+    color: #1d1d1f;
+  }
+  h1 { color: #0071e3; text-align: center; margin-bottom: 30px; }
+  h2 { border-bottom: 1px solid #ccc; padding-bottom: 5px; }
+  button {
+    font-size: 16px;
+    padding: 10px 16px;
+    background: #0071e3;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  button:hover {
+    background: #005bb5;
+  }
+  input, select {
+    font-size: 16px;
+    padding: 8px;
+    width: 100%;
+    margin-top: 5px;
+    box-sizing: border-box;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+  }
+  .container {
+    max-width: 600px;
+    background: white;
+    padding: 20px;
+    margin: auto;
+    margin-bottom: 40px;
+    border-radius: 12px;
+    box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+  }
+  .nav-buttons {
+    text-align: center;
+    margin-bottom: 30px;
+  }
+  .nav-buttons button {
+    margin-right: 10px;
+  }
+  #carrito-lista, #ventas-historial {
+    max-height: 150px;
+    overflow-y: auto;
+    border: 1px solid #ddd;
+    padding: 10px;
+    border-radius: 8px;
+    background: #fafafa;
+  }
+</style>
+</head>
+<body>
+
+<h1>Inivatech Sistem</h1>
+
+<div class="nav-buttons">
+  <button id="btn-agregar">Agregar Producto</button>
+  <button id="btn-vender">Vender</button>
+  <button id="btn-corte">Corte del Día</button>
+</div>
+
+<div id="seccion-agregar" class="container" style="display:none;">
+  <h2>Agregar Producto</h2>
+  <input id="codigo" placeholder="Código único" />
+  <input id="nombre" placeholder="Nombre del producto" />
+  <input id="precio" type="number" placeholder="Precio en $" step="0.01" />
+  <button id="guardar-producto">Guardar Producto</button>
+</div>
+
+<div id="seccion-vender" class="container" style="display:none;">
+  <h2>Venta de Productos</h2>
+  <input id="buscar" placeholder="Buscar por código o nombre" />
+  <button id="agregar-carrito">Agregar al Carrito</button>
+  <div id="carrito-lista"></div>
+  <h3>Total: $<span id="total">0.00</span></h3>
+  <input id="pago" type="number" placeholder="Pago del cliente" step="0.01" />
+  <h3>Cambio: $<span id="cambio">0.00</span></h3>
+  <button id="registrar-venta">Registrar Venta</button>
+  <h3>Historial de Ventas:</h3>
+  <div id="ventas-historial"></div>
+</div>
+
+<div id="seccion-corte" class="container" style="display:none;">
+  <h2>Corte del Día</h2>
+  <input id="gastos" type="number" placeholder="Gastos del día" step="0.01" />
+  <button id="generar-corte">Generar PDF y Reiniciar</button>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script>
+let productos = JSON.parse(localStorage.getItem('productos')) || {};
+let ventas = JSON.parse(localStorage.getItem('ventas')) || [];
+let carrito = [];
+
+const agregar = document.getElementById("btn-agregar");
+const vender = document.getElementById("btn-vender");
+const corte = document.getElementById("btn-corte");
+const agregarSec = document.getElementById("seccion-agregar");
+const venderSec = document.getElementById("seccion-vender");
+const corteSec = document.getElementById("seccion-corte");
+
+agregar.onclick = () => { agregarSec.style.display = 'block'; venderSec.style.display = 'none'; corteSec.style.display = 'none'; };
+vender.onclick = () => { agregarSec.style.display = 'none'; venderSec.style.display = 'block'; corteSec.style.display = 'none'; mostrarVentas(); };
+corte.onclick = () => { agregarSec.style.display = 'none'; venderSec.style.display = 'none'; corteSec.style.display = 'block'; };
+
+document.getElementById("guardar-producto").onclick = () => {
+  let c = codigo.value.trim(), n = nombre.value.trim(), p = parseFloat(precio.value);
+  if (!c || !n || p <= 0 || isNaN(p)) return alert("Campos inválidos");
+  productos[c] = { nombre: n, precio: p };
+  localStorage.setItem('productos', JSON.stringify(productos));
+  codigo.value = nombre.value = precio.value = "";
+};
+
+document.getElementById("agregar-carrito").onclick = () => {
+  const b = document.getElementById("buscar").value.toLowerCase();
+  let item = Object.entries(productos).find(([k, p]) => k.toLowerCase() === b || p.nombre.toLowerCase() === b);
+  if (!item) return alert("No encontrado");
+  carrito.push(item[1]);
+  actualizarCarrito();
+};
+
+function actualizarCarrito() {
+  const lista = document.getElementById("carrito-lista");
+  lista.innerHTML = "";
+  let t = 0;
+  carrito.forEach(p => {
+    t += p.precio;
+    lista.innerHTML += `<div>${p.nombre} - $${p.precio.toFixed(2)}</div>`;
+  });
+  document.getElementById("total").textContent = t.toFixed(2);
+  let pagado = parseFloat(document.getElementById("pago").value || 0);
+  document.getElementById("cambio").textContent = (pagado - t).toFixed(2);
+}
+
+document.getElementById("pago").addEventListener("input", actualizarCarrito);
+
+document.getElementById("registrar-venta").onclick = () => {
+  if (!carrito.length) return alert("Carrito vacío");
+  const fecha = new Date().toLocaleString();
+  const total = carrito.reduce((acc, p) => acc + p.precio, 0);
+  ventas.push({ fecha, productos: [...carrito], total });
+  localStorage.setItem('ventas', JSON.stringify(ventas));
+  carrito = [];
+  actualizarCarrito();
+  mostrarVentas();
+  alert("Venta registrada");
+};
+
+function mostrarVentas() {
+  const cont = document.getElementById("ventas-historial");
+  cont.innerHTML = "";
+  ventas.forEach(v => {
+    cont.innerHTML += `<div><b>${v.fecha}</b><br>${v.productos.map(p => `${p.nombre} - $${p.precio.toFixed(2)}`).join("<br>")}<br><i>Total: $${v.total.toFixed(2)}</i></div><hr>`;
+  });
+}
+
+const { jsPDF } = window.jspdf;
+document.getElementById("generar-corte").onclick = () => {
+  const gastos = parseFloat(document.getElementById("gastos").value || 0);
+  let doc = new jsPDF();
+  doc.setFontSize(16);
+  doc.text("Corte del Día - Inivatech Sistem", 20, 20);
+  let y = 30, total = 0;
+  ventas.forEach(v => {
+    doc.setFontSize(12);
+    doc.text(v.fecha, 20, y);
+    y += 6;
+    v.productos.forEach(p => { doc.text(`- ${p.nombre}: $${p.precio.toFixed(2)}`, 25, y); y += 6; });
+    doc.text(`Total Venta: $${v.total.toFixed(2)}`, 25, y);
+    total += v.total;
+    y += 10;
+  });
+  doc.text(`TOTAL VENTAS: $${total.toFixed(2)}`, 20, y); y += 6;
+  doc.text(`GASTOS: $${gastos.toFixed(2)}`, 20, y); y += 6;
+  doc.text(`GANANCIA NETA: $${(total - gastos).toFixed(2)}`, 20, y);
+  doc.save("corte_del_dia.pdf");
+
+  ventas = [];
+  localStorage.setItem('ventas', JSON.stringify([]));
+  mostrarVentas();
+  alert("Corte realizado. Historial de ventas reiniciado.");
+};
+</script>
+
+</body>
+</html>
